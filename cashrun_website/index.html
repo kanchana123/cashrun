@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cash Run - The Ultimate Money Dash</title>
+    <link href="https://fonts.googleapis.com/css2?family=Jost:wght@400;700;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --dark: #0d1117;
+            --darker: #090c10;
+            --accent: #ffd700;
+            --text: #ffffff;
+            --text-muted: #8b949e;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Jost', sans-serif;
+            background-color: var(--dark);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+
+        /* Navigation */
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 900;
+            font-style: italic;
+            letter-spacing: 1px;
+        }
+
+        .nav-links {
+            list-style: none;
+            display: flex;
+            gap: 30px;
+            align-items: center;
+        }
+
+        .nav-links a {
+            color: var(--text);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s;
+        }
+
+        .nav-links a:hover { color: var(--primary); }
+
+        .contact-btn {
+            border: 2px solid var(--primary);
+            padding: 8px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+        }
+
+        .contact-btn:hover { background: var(--primary); }
+
+        /* Hero Section */
+        .hero {
+            padding-bottom: 80px;
+            background: radial-gradient(circle at top right, #1f2937 0%, var(--dark) 40%);
+            overflow: hidden;
+        }
+
+        .hero-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-top: 60px;
+            gap: 50px;
+        }
+
+        .text-content { flex: 1; }
+
+        h1 {
+            font-size: 4rem;
+            line-height: 1.1;
+            font-weight: 900;
+            margin-bottom: 20px;
+        }
+
+        .highlight { color: var(--accent); display: block; }
+
+        .text-content p {
+            font-size: 1.2rem;
+            color: var(--text-muted);
+            margin-bottom: 40px;
+            max-width: 450px;
+        }
+
+        .cta-buttons { display: flex; gap: 15px; flex-wrap: wrap; }
+
+        img { max-width: 100%; height: auto; display: block; }
+
+        .store-btn img {
+            height: 50px;
+            width: auto;
+            transition: transform 0.2s;
+        }
+
+        .store-btn img:hover { transform: scale(1.05); }
+
+        /* Phone Preview */
+        .phone-preview { flex: 1; display: flex; justify-content: center; }
+
+        .screen-placeholder {
+            width: 300px;
+            height: 600px;
+            background: #000;
+            border-radius: 40px;
+            border: 12px solid #333;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 120px;
+            height: 30px;
+            background: #333;
+            border-radius: 0 0 15px 15px;
+            z-index: 10;
+        }
+
+        .screen-placeholder img { width: 100%; height: 100%; object-fit: cover; }
+
+        .placeholder-text {
+            color: #555;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+        }
+
+        /* Features Section */
+        .features {
+            padding: 100px 0;
+            background: var(--darker);
+            text-align: center;
+        }
+
+        .features h2 { font-size: 2.5rem; margin-bottom: 60px; }
+
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+        }
+
+        .feature-card {
+            background: #161b22;
+            padding: 40px;
+            border-radius: 20px;
+            transition: transform 0.3s;
+        }
+
+        .feature-card:hover { transform: translateY(-10px); }
+
+        .icon { font-size: 3rem; margin-bottom: 20px; }
+
+        .feature-card h3 { font-size: 1.5rem; margin-bottom: 15px; }
+
+        .feature-card p { color: var(--text-muted); }
+
+        /* Support Form Section */
+        .support-section {
+            padding: 80px 0;
+            background: var(--dark);
+        }
+
+        .support-form {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #161b22;
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid #30363d;
+        }
+
+        .form-group { margin-bottom: 20px; }
+
+        label { display: block; margin-bottom: 8px; font-weight: bold; }
+
+        input, textarea {
+            width: 100%;
+            padding: 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            color: #fff;
+            font-family: inherit;
+        }
+
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        button[type="submit"] {
+            background: var(--primary);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background 0.2s;
+        }
+
+        button[type="submit"]:hover { background: #2563eb; }
+
+        /* Footer */
+        footer {
+            padding: 50px 0;
+            border-top: 1px solid #30363d;
+        }
+
+        .footer-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .footer-logo { font-weight: 900; font-size: 1.2rem; }
+
+        .links a {
+            color: var(--text-muted);
+            text-decoration: none;
+            margin: 0 15px;
+            font-size: 0.9rem;
+        }
+
+        .links a:hover { color: var(--primary); }
+
+        .copyright { color: #484f58; font-size: 0.8rem; margin-top: 20px; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .hero-content { flex-direction: column; text-align: center; padding-top: 20px; }
+            .text-content p { margin: 0 auto 40px; }
+            .cta-buttons { justify-content: center; }
+            h1 { font-size: 3rem; }
+            .screen-placeholder { width: 260px; height: 520px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="container">
+            <nav>
+                <div class="logo">CASH RUN</div>
+                <ul class="nav-links">
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="privacy.html">Privacy Policy</a></li>
+                    <li><a href="#support" class="contact-btn">Support</a></li>
+                </ul>
+            </nav>
+            
+            <div class="hero-content">
+                <div class="text-content">
+                    <h1>Run. Stack. <span class="highlight">Get Rich.</span></h1>
+                    <p>Navigate through tricky obstacles, make smart financial choices, and build your stack of cash in this addictive runner game.</p>
+                    <div class="cta-buttons">
+                        <a href="#" class="store-btn apple">
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/6/67/App_Store_%28iOS%29.svg" width="150" height="50" alt="Download on App Store">
+                        </a>
+                    </div>
+                </div>
+                <div class="phone-preview">
+                    <div class="screen-placeholder">
+                        <div class="notch"></div>
+                        <img src="assets/screenshot1.png" alt="Game Screenshot" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                        <div class="placeholder-text" style="display:none;">
+                            GAME SCREENSHOT<br>
+                            <span style="font-size:0.8em; font-weight:normal; color:#666;">(Add 'screenshot.png' to assets folder)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <h2>Why Play Cash Run?</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="icon">💸</div>
+                    <h3>Smart Decisions</h3>
+                    <p>Choose between spending and saving. Pick the right path to multiply your wealth.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🚀</div>
+                    <h3>Endless Levels</h3>
+                    <p>Face increasingly difficult challenges as you level up and grow your net worth.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="icon">🎨</div>
+                    <h3>Stunning Visuals</h3>
+                    <p>Enjoy beautiful themes like Neon Nights, Pastel Dream, and Ocean Breeze.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Support Form Section -->
+    <section id="support" class="support-section">
+        <div class="container">
+            <h2 style="text-align: center; margin-bottom: 40px; font-size: 2.5rem;">Contact Support</h2>
+            <div class="support-form">
+                <!-- 
+                  NOTE: To make this form work, you need to:
+                  1. Go to https://formspree.io/
+                  2. Create a free account and a new form.
+                  3. Replace 'YOUR_FORMSPREE_ID' below with the ID formspree gives you (e.g., f/mdqrzlev).
+                  
+                  Until then, this form will just look functional but won't send the email.
+                -->
+                <form action="https://formspree.io/f/xrbdnyrp" method="POST">
+                    <div class="form-group">
+                        <label for="name">Name</label>
+                        <input type="text" id="name" name="name" required placeholder="Your Name">
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" required placeholder="your@email.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="message">Message</label>
+                        <textarea id="message" name="message" rows="5" required placeholder="Describe your issue or feedback..."></textarea>
+                    </div>
+                    <button type="submit">Send Message</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-logo">CASH RUN</div>
+                <div class="links">
+                    <a href="privacy.html">Privacy Policy</a>
+                    <a href="#support">Contact Support</a>
+                </div>
+                <p class="copyright">&copy; 2025 Cash Run Game. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "appId": "com.kanchannannavare.cashrun",
+  "appName": "CashRun",
+  "webDir": "dist",
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 3000, 
+      "launchAutoHide": true,     
+      "backgroundColor": "#161b22", 
+      "androidScaleType": "CENTER_CROP",
+      "splashFullScreen": true,       
+      "splashImmersive": true         
+    }
+  }
+}

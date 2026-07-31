@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">cashrun</string>
+    <string name="title_activity_main">cashrun</string>
+    <string name="package_name">com.kanchannannavare.cashrun</string>
+    <string name="custom_url_scheme">com.kanchannannavare.cashrun</string>
+    <string name="admob_app_id">ca-app-pub-4946213253068210~4736019602</string>
+</resources>
