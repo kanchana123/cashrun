@@ -415,9 +415,22 @@
         .timer-message {
             display: none; 
         }
+        
+        #riskLegend {
+            position: absolute;
+            left: 0.75rem;
+            bottom: 0.75rem;
+            z-index: 5;
+            padding: 0.4rem 0.6rem;
+            border-radius: 0.5rem;
+            background: rgba(0, 0, 0, 0.4);
+            color: #fff;
+            font-size: 0.65rem;
+            font-weight: 700;
+        }
 
     </style>
-  <script type="module" crossorigin src="/assets/index-MKjpFlK-.js"></script>
+  <script type="module" crossorigin src="/assets/index-DyqfuPNV.js"></script>
 </head>
 <body>
 
@@ -439,6 +452,7 @@
 
     <div class="game-area">
         <canvas id="gameCanvas"></canvas>
+        <div id="riskLegend">SAFE · RISKY · DANGER</div>
         
         <div id="tapToPlayOverlay">
             <div class="tap-text">TAP TO PLAY</div>

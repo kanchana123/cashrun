@@ -205,11 +205,13 @@ class SoundManager {
         this.sfx.collect.volume = 0.8;
     }
 
-    playBGM() { this.bgm.play().catch(e => {}); }
+    playBGM() {
+        if (gameSettings?.sound !== false) this.bgm.play().catch(e => {});
+    }
     stopBGM() { this.bgm.pause(); this.bgm.currentTime = 0; }
     playSFX(key) {
         const audio = this.sfx[key];
-        if (audio) {
+        if (audio && gameSettings?.sound !== false) {
             audio.currentTime = 0; 
             audio.play().catch(e => {});
         }
@@ -289,6 +291,44 @@ const levelUpTitle = document.getElementById('levelUpTitle');
 const gameOverTitle = document.getElementById('gameOverTitle');
 const scoreElements = document.querySelectorAll('.score-val, .text-2xl, .text-3xl');
 
+const SETTINGS_KEY = 'cashRun_settings';
+const METRICS_KEY = 'cashRun_metrics';
+const defaultSettings = {
+    sound: true,
+    haptics: true,
+    reducedMotion: false,
+    highContrast: false,
+    themeIndex: 0,
+    unlockedThemes: [0]
+};
+let gameSettings = {
+    ...defaultSettings,
+    ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')
+};
+let localMetrics = {
+    runs: 0,
+    wins: 0,
+    losses: 0,
+    maxStreak: 0,
+    checkpoints: 0,
+    unlockedAchievements: [],
+    ...JSON.parse(localStorage.getItem(METRICS_KEY) || '{}')
+};
+
+function saveLocalProgress() {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(gameSettings));
+    localStorage.setItem(METRICS_KEY, JSON.stringify(localMetrics));
+}
+
+function unlockAchievement(id, label) {
+    if (localMetrics.unlockedAchievements.includes(id)) return;
+    localMetrics.unlockedAchievements.push(id);
+    saveLocalProgress();
+    levelUpNotification.textContent = `ACHIEVEMENT: ${label}`;
+    levelUpNotification.classList.add('animate-level-text');
+}
+
+
 let GAME_WIDTH = 400;
 let GAME_HEIGHT = 600;
 let BLOCK_SIZE = 80;
@@ -321,6 +361,9 @@ let checkpoint = null;
 let nextCheckpointIndex = 0;
 const CHECKPOINT_FRACTIONS = [0.25, 0.5, 0.75];
 let encounterState = { needsRecovery: false };
+let milestoneSpawned = false;
+let routeStreak = 0;
+let powerUps = { shield: 0, doubleMoney: 0 };
 
 let collidingBlock = null;
 let collisionTimer = 0;
@@ -543,10 +586,11 @@ class Block {
 }
 
 class Boost {
-    constructor(x, y, value) {
+    constructor(x, y, value, type = 'money') {
         this.x = x;
         this.y = y;
         this.value = value;
+        this.type = type;
         this.radius = snakeRadius * 0.8;
         this.isCollected = false;
     }
@@ -571,16 +615,23 @@ class Boost {
         ctx.arc(this.x, this.y, glowRadius, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.filter = currentTheme.svgFilter;
-        ctx.drawImage(moneyBagSvg, this.x - size/2, this.y - size/2, size, size);
-        ctx.filter = 'none';
+        if (this.type === 'money') {
+            ctx.filter = currentTheme.svgFilter;
+            ctx.drawImage(moneyBagSvg, this.x - size/2, this.y - size/2, size, size);
+            ctx.filter = 'none';
+        } else {
+            ctx.font = `900 ${Math.floor(size * 0.9)}px Jost`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.type === 'shield' ? '🛡️' : '✨', this.x, this.y);
+        }
         
         ctx.fillStyle = '#ffffff'; 
         const fontSize = Math.floor(snakeRadius * 0.5);
         ctx.font = `700 ${fontSize}px Jost`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(this.value, this.x, this.y + size/2 + 10);
+        ctx.fillText(this.type === 'money' ? this.value : this.type.toUpperCase(), this.x, this.y + size/2 + 10);
         
         ctx.restore();
     }
@@ -678,10 +729,13 @@ function resetGame(fullReset = false) {
     adTimerModal.style.display = 'none'; // Ensure ad timer modal is hidden
 
     if (fullReset) {
-        const randomTheme = themes[Math.floor(Math.random() * themes.length)];
+        const unlockedThemes = gameSettings.unlockedThemes.map(index => themes[index]);
+        const randomTheme = unlockedThemes[Math.floor(Math.random() * unlockedThemes.length)];
         applyTheme(randomTheme);
 
         levelManager.resetRun(); 
+        localMetrics.runs++;
+        saveLocalProgress();
         gameState = 'IDLE';
         tapToPlayOverlay.style.display = 'block'; 
     } else {
@@ -707,6 +761,9 @@ function resetGame(fullReset = false) {
     checkpoint = null;
     nextCheckpointIndex = 0;
     encounterState = { needsRecovery: false };
+    milestoneSpawned = false;
+    routeStreak = 0;
+    powerUps = { shield: 0, doubleMoney: 0 };
     
     for(let i = 0; i < 300; i+=5) {
         snakePath.push({ x: snakeX, y: SNAKE_Y_POSITION + i });
@@ -792,10 +849,13 @@ function rebuildSnakePath() {
 }
 
 function showCheckpointNotification() {
-    levelUpNotification.textContent = 'CHECKPOINT!';
-    levelUpNotification.classList.remove('animate-level-text');
-    void levelUpNotification.offsetWidth;
-    levelUpNotification.classList.add('animate-level-text');
+    if (import.meta.env.DEV) {
+        console.log(
+            `Cash Run DEBUG: Checkpoint saved at ${Math.round(
+                (levelManager.runDistance / levelManager.distanceThreshold) * 100
+            )}%`
+        );
+    }
 }
 
 function saveCheckpoint() {
@@ -806,6 +866,8 @@ function saveCheckpoint() {
         score,
         speed: gameSpeed
     });
+    localMetrics.checkpoints++;
+    saveLocalProgress();
     showCheckpointNotification();
 }
 
@@ -858,6 +920,8 @@ function reviveGame() {
 async function finalGameOver() {
     // Show the regular game over modal
     gameState = 'GAMEOVER';
+    localMetrics.losses++;
+    saveLocalProgress();
     await adManager.showInterstitial();
     adManager.showBanner();
     levelManager.saveToLocalStorage(); 
@@ -877,7 +941,12 @@ function spawnObjects() {
     const profile = getChallengeProfile(levelManager.currentLevel);
     const economy = getLiveEconomy(profile, snakeLength);
     const shouldRecover = encounterState.needsRecovery || economy.needsRecovery;
-    const isWall = !shouldRecover && Math.random() < profile.wallChance;
+    const isMilestone = (
+        !milestoneSpawned &&
+        levelManager.currentLevel % 5 === 0 &&
+        levelManager.runDistance >= levelManager.distanceThreshold * 0.5
+    );
+    const isWall = !shouldRecover && (isMilestone || Math.random() < profile.wallChance);
     const minimumBill = economy.safe.min;
     const maximumBill = economy.dangerous.max;
     let newBlocks = [];
@@ -934,6 +1003,18 @@ function spawnObjects() {
             blocks.push(newBlock);
             newBlocks.push(newBlock);
         });
+
+        // A dangerous bill can pay back with a bag positioned directly behind
+        // it, giving skilled players an intentional risk/reward route.
+        const riskyBlock = newBlocks.find(block => block.value >= economy.dangerous.min);
+        if (riskyBlock && Math.random() < 0.2) {
+            boosts.push(new Boost(
+                riskyBlock.x + LANE_WIDTH / 2,
+                -BLOCK_SIZE * 2.5,
+                randomInt(economy.bag.min, economy.bag.max),
+                'money'
+            ));
+        }
     }
 
     newBlocks.forEach(block => {
@@ -970,9 +1051,36 @@ function spawnObjects() {
         const boostValue = randomInt(economy.bag.min, economy.bag.max);
         boosts.push(new Boost(laneIndex * LANE_WIDTH + LANE_WIDTH / 2, -BLOCK_SIZE * 1.5, boostValue));
     }
+    if (!shouldRecover && Math.random() < 0.08) {
+        const laneIndex = Math.floor(Math.random() * NUM_COLS);
+        const type = Math.random() < 0.5 ? 'shield' : 'double';
+        boosts.push(new Boost(
+            laneIndex * LANE_WIDTH + LANE_WIDTH / 2,
+            -BLOCK_SIZE * 2,
+            0,
+            type
+        ));
+    }
 
     // A wall is always followed by a non-wall encounter with a recovery bag.
     encounterState.needsRecovery = isWall;
+    if (isMilestone) milestoneSpawned = true;
+}
+
+function registerSmartRoute() {
+    routeStreak++;
+    if (routeStreak > localMetrics.maxStreak) {
+        localMetrics.maxStreak = routeStreak;
+        if (routeStreak >= 10) unlockAchievement('streak-10', 'ROUTE MASTER');
+        saveLocalProgress();
+    }
+    if (routeStreak % 5 === 0) {
+        score += routeStreak * 5;
+        createSparkleEffect(snakeX, SNAKE_Y_POSITION, 10);
+        if (import.meta.env.DEV) {
+            console.log(`Cash Run DEBUG: ${routeStreak}x smart-route streak awarded.`);
+        }
+    }
 }
 
 function update(deltaTime) {
@@ -1052,8 +1160,18 @@ function update(deltaTime) {
             snakeLength--;
             
             if (snakeLength <= 0) {
-                snakeLength = 0; 
-                endGame(); // Calls startReviveTimer
+                if (powerUps.shield > 0) {
+                    powerUps.shield--;
+                    snakeLength = 1;
+                    collidingBlock.isDestroyed = true;
+                    collidingBlock = null;
+                    gameState = 'RUNNING';
+                    levelUpNotification.textContent = 'SHIELD SAVED YOU!';
+                    levelUpNotification.classList.add('animate-level-text');
+                } else {
+                    snakeLength = 0;
+                    endGame(); // Calls startReviveTimer
+                }
             } else if (collidingBlock.value <= 0) {
                 collidingBlock.isBought = true;
                 collidingBlock.animTimer = 0; 
@@ -1139,7 +1257,11 @@ function update(deltaTime) {
         timeSinceLastSpawn = 0; 
         targetSpawnInterval = getRandomSpawnInterval();
     }
-    blocks = blocks.filter(block => block.y < GAME_HEIGHT);
+    blocks = blocks.filter(block => {
+        if (block.y < GAME_HEIGHT) return true;
+        if (!block.isBought && !block.isDestroyed) registerSmartRoute();
+        return false;
+    });
     boosts = boosts.filter(boost => boost.y < GAME_HEIGHT && !boost.isCollected);
     laneLines = laneLines.filter(line => line.y < GAME_HEIGHT);
 }
@@ -1158,6 +1280,7 @@ function createBlockHitEffect(x, y, color) {
 }
 
 async function triggerHaptic(style = 'light') {
+    if (!gameSettings.haptics) return;
     try {
         if (style === 'medium') {
             await Haptics.impact({ style: ImpactStyle.Medium });
@@ -1205,6 +1328,7 @@ function handleCollisions() {
     
     // --- ACTIVATE COLLISION WITH ONLY THE HIGHEST PRIORITY BLOCK ---
     if (highestPriorityBlock) {
+        routeStreak = 0;
         gameState = 'COLLIDING';
         collidingBlock = highestPriorityBlock;
         return; 
@@ -1214,7 +1338,14 @@ function handleCollisions() {
     for (let i = boosts.length - 1; i >= 0; i--) {
         const boost = boosts[i];
         if (Math.sqrt((head.x - boost.x) ** 2 + (head.y - boost.y) ** 2) < snakeRadius + boost.radius + 5) {
-            snakeLength += boost.value;
+            if (boost.type === 'shield') {
+                powerUps.shield = Math.min(1, powerUps.shield + 1);
+            } else if (boost.type === 'double') {
+                powerUps.doubleMoney = 3;
+            } else {
+                snakeLength += boost.value * (powerUps.doubleMoney > 0 ? 2 : 1);
+                if (powerUps.doubleMoney > 0) powerUps.doubleMoney--;
+            }
             boost.isCollected = true;
             createSparkleEffect(boost.x, boost.y, 15);
             boosts.splice(i, 1);
@@ -1382,6 +1513,14 @@ function levelUpSequence() {
                 
                 levelManager.levelComplete(totalEarnings); 
                 saveHighScore();
+                localMetrics.wins++;
+                const themeUnlock = Math.min(themes.length - 1, Math.floor(levelManager.currentLevel / 5));
+                if (!gameSettings.unlockedThemes.includes(themeUnlock)) {
+                    gameSettings.unlockedThemes.push(themeUnlock);
+                    unlockAchievement(`theme-${themeUnlock}`, `NEW THEME: ${themes[themeUnlock].name}`);
+                }
+                if (levelManager.currentLevel >= 10) unlockAchievement('level-10', 'HIGH ROLLER');
+                saveLocalProgress();
                 
                 levelUpRunScore.textContent = totalEarnings; 
                 levelUpTotalNetWorth.textContent = levelManager.globalNetWorth;
