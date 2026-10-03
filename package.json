@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "test:balance": "node --experimental-default-type=module tests/progression.test.mjs",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview"

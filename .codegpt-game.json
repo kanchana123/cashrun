@@ -1,0 +1,13 @@
+{
+  "name": "cashrun-app",
+  "engine": "generic",
+  "launch": {
+    "cmd": "npm",
+    "args": ["run", "dev", "--", "--host", "127.0.0.1"]
+  },
+  "log": {
+    "stdout": true
+  },
+  "ready": "Local:",
+  "sourceRoots": ["."]
+}

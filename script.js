@@ -5,7 +5,11 @@ import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-
 import { AdMob, BannerAdSize, BannerAdPosition, RewardAdPluginEvents } from '@capacitor-community/admob';
 import { Haptics, ImpactStyle } from '@capacitor/haptics'; 
 import { StatusBar } from '@capacitor/status-bar';
-import LevelManager from '/levelManager.js';
+import LevelManager, {
+    createCheckpointSnapshot,
+    getChallengeProfile,
+    getLiveEconomy
+} from '/levelManager.js';
 import { themes } from '/themes.js'; 
 
 setLogLevel('error');
@@ -14,11 +18,13 @@ setLogLevel('error');
 const ADMOB_IDS = {
     android: {
         banner: import.meta.env.VITE_ADMOB_ANDROID_BANNER_ID,
-        rewarded: import.meta.env.VITE_ADMOB_ANDROID_REWARDED_ID
+        rewarded: import.meta.env.VITE_ADMOB_ANDROID_REWARDED_ID,
+        interstitial: import.meta.env.VITE_ADMOB_ANDROID_INTERSTITIAL_ID
     },
     ios: {
         banner: import.meta.env.VITE_ADMOB_IOS_BANNER_ID,
-        rewarded: import.meta.env.VITE_ADMOB_IOS_REWARDED_ID
+        rewarded: import.meta.env.VITE_ADMOB_IOS_REWARDED_ID,
+        interstitial: import.meta.env.VITE_ADMOB_IOS_INTERSTITIAL_ID
     }
 };
 
@@ -35,6 +41,8 @@ class AdManager {
         this.isReady = false;
         this.platform = (/(android)/i.test(navigator.userAgent)) ? 'android' : 'ios';
         this.rewardLoaded = false;
+        this.interstitialLoaded = false;
+        this.lastInterstitialShownAt = 0;
         this.init();
     }
 
@@ -48,6 +56,7 @@ class AdManager {
             this.isReady = true;
             console.log("AdMob DEBUG: Initialized Native plugin successfully.");
             this.prepareReward(); 
+            this.prepareInterstitial();
         } catch (e) {
             console.log("AdMob DEBUG: Failed to initialize (likely browser)", e);
             this.isReady = false;
@@ -89,6 +98,46 @@ class AdManager {
         } catch (e) {
             console.error("AdMob DEBUG: Failed to load rewarded ad during preparation.", e);
             this.rewardLoaded = false;
+        }
+    }
+
+    async prepareInterstitial() {
+        const adId = ADMOB_IDS[this.platform].interstitial;
+        if (!this.isReady || !adId) return;
+
+        this.interstitialLoaded = false;
+        try {
+            await AdMob.prepareInterstitial({
+                adId,
+                isTesting: false
+            });
+            this.interstitialLoaded = true;
+            console.log("AdMob DEBUG: Interstitial ad loaded and ready.");
+        } catch (e) {
+            console.warn("AdMob DEBUG: Failed to load interstitial ad.", e);
+        }
+    }
+
+    async showInterstitial() {
+        const minimumInterval = 90 * 1000;
+        if (
+            !this.isReady ||
+            !this.interstitialLoaded ||
+            Date.now() - this.lastInterstitialShownAt < minimumInterval
+        ) {
+            return false;
+        }
+
+        this.interstitialLoaded = false;
+        try {
+            await AdMob.showInterstitial();
+            this.lastInterstitialShownAt = Date.now();
+            return true;
+        } catch (e) {
+            console.warn("AdMob DEBUG: Failed to show interstitial ad.", e);
+            return false;
+        } finally {
+            this.prepareInterstitial();
         }
     }
 
@@ -268,6 +317,10 @@ let boosts = [];
 let particles = [];
 let finishLine = null;
 let laneLines = [];
+let checkpoint = null;
+let nextCheckpointIndex = 0;
+const CHECKPOINT_FRACTIONS = [0.25, 0.5, 0.75];
+let encounterState = { needsRecovery: false };
 
 let collidingBlock = null;
 let collisionTimer = 0;
@@ -295,31 +348,21 @@ const expenseTypes = {
     'movie': { icon: '🍿', animType: 'pop' }
 };
 
-function getDifficultyRanges(level) {
-    let maxBlockVal;
+function randomInt(min, max, random = Math.random) {
+    return Math.floor(random() * (max - min + 1)) + min;
+}
 
-    // --- UPDATED DIFFICULTY SCALING LOGIC ---
-    if (level <= 5) {
-        maxBlockVal = 10;
-    } else if (level <= 10) {
-        maxBlockVal = 20;
-    } else if (level <= 30) {
-        maxBlockVal = 30;
-    } else {
-        // Increase max value by 1 for every 5 levels after level 30
-        const extraLevels = level - 30;
-        const increase = Math.floor(extraLevels / 5);
-        maxBlockVal = Math.min(99, 30 + increase); // Cap at 99 for now
-    }
-    
-    // Always start minimum block value at 1.
-    const minBlockVal = 1; 
+function getBillValue(economy, band, random = Math.random, maxValue = Infinity) {
+    const range = economy[band];
+    return randomInt(range.min, Math.max(range.min, Math.min(range.max, maxValue)), random);
+}
 
-    // Boosts are still based on a simple linear scale
-    const maxBoostVal = Math.min(25, 5 + level);
-    const minBoostVal = 1 + Math.floor(level / 5);
-    
-    return { blockMin: minBlockVal, blockMax: maxBlockVal, boostMin: minBoostVal, boostMax: maxBoostVal };
+function getWeightedBillValue(economy, random = Math.random) {
+    const roll = random();
+
+    if (roll < 0.3) return getBillValue(economy, 'safe', random);
+    if (roll < 0.75) return getBillValue(economy, 'risky', random);
+    return getBillValue(economy, 'dangerous', random);
 }
 
 function getBlockColor(value, min, max) {
@@ -595,7 +638,9 @@ class FinishLine {
     }
 }
 
-function getRandomSpawnInterval() { return (Math.random() * 0.5 + 0.7) * 60; }
+function getRandomSpawnInterval(profile = getChallengeProfile(levelManager.currentLevel)) {
+    return randomInt(profile.spawnInterval.min, profile.spawnInterval.max);
+}
 
 // --- INIT LOGIC (Dynamic Scaling) ---
 function initGame() {
@@ -651,7 +696,7 @@ function resetGame(fullReset = false) {
     snakeX = GAME_WIDTH / 2;
     snakeTargetX = snakeX;
     
-    gameSpeed = INITIAL_SPEED;
+    gameSpeed = getChallengeProfile(levelManager.currentLevel).speed.initial;
     blocks = [];
     boosts = [];
     particles = [];
@@ -659,6 +704,9 @@ function resetGame(fullReset = false) {
     snakePath = [];
     collidingBlock = null;
     laneLines = [];
+    checkpoint = null;
+    nextCheckpointIndex = 0;
+    encounterState = { needsRecovery: false };
     
     for(let i = 0; i < 300; i+=5) {
         snakePath.push({ x: snakeX, y: SNAKE_Y_POSITION + i });
@@ -672,6 +720,7 @@ function resetGame(fullReset = false) {
     levelProgressBar.style.width = '0%';
     
     levelUpNotification.classList.remove('animate-level-text');
+    levelUpNotification.textContent = 'LEVEL UP!';
 
     lastTime = performance.now();
     
@@ -732,15 +781,72 @@ function startReviveTimer() {
     console.log(`AdMob DEBUG: Starting revive timer. Ad is currently loaded: ${adManager.rewardLoaded}`);
 }
 
+function rebuildSnakePath() {
+    snakeX = GAME_WIDTH / 2;
+    snakeTargetX = snakeX;
+    snakePath = [];
+
+    for (let i = 0; i < 300; i += 5) {
+        snakePath.push({ x: snakeX, y: SNAKE_Y_POSITION + i });
+    }
+}
+
+function showCheckpointNotification() {
+    levelUpNotification.textContent = 'CHECKPOINT!';
+    levelUpNotification.classList.remove('animate-level-text');
+    void levelUpNotification.offsetWidth;
+    levelUpNotification.classList.add('animate-level-text');
+}
+
+function saveCheckpoint() {
+    checkpoint = createCheckpointSnapshot({
+        distance: levelManager.runDistance,
+        // Recovery should help, without restoring the player's full strength.
+        wallet: Math.max(2, Math.floor(snakeLength * 0.65)),
+        score,
+        speed: gameSpeed
+    });
+    showCheckpointNotification();
+}
+
+function restoreCheckpoint() {
+    if (!checkpoint) return false;
+
+    levelManager.runDistance = checkpoint.distance;
+    score = checkpoint.score;
+    levelManager.runScore = score;
+    snakeLength = checkpoint.wallet;
+    gameSpeed = checkpoint.speed;
+    blocks = [];
+    boosts = [];
+    particles = [];
+    laneLines = [];
+    finishLine = null;
+    collidingBlock = null;
+    collisionTimer = 0;
+    encounterState = { needsRecovery: true };
+    timeSinceLastSpawn = 0;
+    targetSpawnInterval = getRandomSpawnInterval();
+    rebuildSnakePath();
+    levelProgressBar.style.width = `${Math.min(
+        (levelManager.runDistance / levelManager.distanceThreshold) * 100,
+        100
+    )}%`;
+    return true;
+}
+
 function reviveGame() {
     // Clear timer and hide modal
     adTimerModal.style.display = 'none';
 
-    // Game logic for revival
-    snakeLength = REVIVE_BILLS; 
-    if (collidingBlock) {
-        collidingBlock.isDestroyed = true; 
-        collidingBlock = null;
+    // A rewarded ad returns the player to their latest checkpoint. Before the
+    // first checkpoint, retain the original small in-place revive.
+    if (!restoreCheckpoint()) {
+        snakeLength = REVIVE_BILLS;
+        if (collidingBlock) {
+            collidingBlock.isDestroyed = true;
+            collidingBlock = null;
+        }
     }
     
     gameState = 'RUNNING';
@@ -749,9 +855,10 @@ function reviveGame() {
     requestAnimationFrame(gameLoop);
 }
 
-function finalGameOver() {
+async function finalGameOver() {
     // Show the regular game over modal
     gameState = 'GAMEOVER';
+    await adManager.showInterstitial();
     adManager.showBanner();
     levelManager.saveToLocalStorage(); 
     modalTotalNetWorth.textContent = levelManager.globalNetWorth;
@@ -767,8 +874,12 @@ function spawnObjects() {
         return; 
     }
 
-    const ranges = getDifficultyRanges(levelManager.currentLevel);
-    const isWall = Math.random() < 0.25; 
+    const profile = getChallengeProfile(levelManager.currentLevel);
+    const economy = getLiveEconomy(profile, snakeLength);
+    const shouldRecover = encounterState.needsRecovery || economy.needsRecovery;
+    const isWall = !shouldRecover && Math.random() < profile.wallChance;
+    const minimumBill = economy.safe.min;
+    const maximumBill = economy.dangerous.max;
     let newBlocks = [];
 
     if (isWall) {
@@ -785,12 +896,18 @@ function spawnObjects() {
             
             let blockValue;
             if (lowIndices.includes(laneIndex)) {
-                blockValue = Math.floor(Math.random() * (ranges.blockMax/2) + 1);
+                // Walls always provide two bills that cost no more than 65%
+                // of the wallet size at the moment the wall is created.
+                const affordableMax = Math.max(
+                    economy.safe.min,
+                    Math.floor(snakeLength * 0.65)
+                );
+                blockValue = getBillValue(economy, 'safe', Math.random, affordableMax);
             } else {
-                blockValue = Math.floor(Math.random() * (ranges.blockMax - ranges.blockMin + 1)) + ranges.blockMin;
+                blockValue = getWeightedBillValue(economy);
             }
 
-            const color = getBlockColor(blockValue, ranges.blockMin, ranges.blockMax);
+            const color = getBlockColor(blockValue, minimumBill, maximumBill);
             const newBlock = new Block(laneIndex * LANE_WIDTH, -BLOCK_SIZE, blockValue, randomTypeKey, color);
             blocks.push(newBlock);
             newBlocks.push(newBlock);
@@ -810,8 +927,8 @@ function spawnObjects() {
             const typeKeys = Object.keys(expenseTypes);
             const randomTypeKey = typeKeys[Math.floor(Math.random() * typeKeys.length)];
             
-            const blockValue = Math.floor(Math.random() * (ranges.blockMax - ranges.blockMin + 1)) + ranges.blockMin;
-            const color = getBlockColor(blockValue, ranges.blockMin, ranges.blockMax);
+            const blockValue = getWeightedBillValue(economy);
+            const color = getBlockColor(blockValue, minimumBill, maximumBill);
             
             const newBlock = new Block(laneIndex * LANE_WIDTH, -BLOCK_SIZE, blockValue, randomTypeKey, color);
             blocks.push(newBlock);
@@ -847,11 +964,15 @@ function spawnObjects() {
         }
     });
 
-    if (Math.random() < 0.4) {
+    const bagChance = shouldRecover ? 1 : profile.bag.chance;
+    if (Math.random() < bagChance) {
         const laneIndex = Math.floor(Math.random() * NUM_COLS);
-        const boostValue = Math.floor(Math.random() * (ranges.boostMax - ranges.boostMin + 1)) + ranges.boostMin;
+        const boostValue = randomInt(economy.bag.min, economy.bag.max);
         boosts.push(new Boost(laneIndex * LANE_WIDTH + LANE_WIDTH / 2, -BLOCK_SIZE * 1.5, boostValue));
     }
+
+    // A wall is always followed by a non-wall encounter with a recovery bag.
+    encounterState.needsRecovery = isWall;
 }
 
 function update(deltaTime) {
@@ -948,7 +1069,11 @@ function update(deltaTime) {
 
     score += Math.floor(deltaTime * gameSpeed * 0.1);
     levelManager.runScore = score;
-    gameSpeed += deltaTime * 0.0002; 
+    const speedProfile = getChallengeProfile(levelManager.currentLevel).speed;
+    gameSpeed = Math.min(
+        speedProfile.max,
+        gameSpeed + deltaTime * speedProfile.acceleration
+    );
     
     scoreDisplay.textContent = levelManager.globalNetWorth + score;
 
@@ -974,6 +1099,15 @@ function update(deltaTime) {
 
     const distanceTraveled = gameSpeed * deltaTime;
     levelManager.updateDistance(distanceTraveled);
+
+    if (
+        nextCheckpointIndex < CHECKPOINT_FRACTIONS.length &&
+        levelManager.runDistance >=
+            levelManager.distanceThreshold * CHECKPOINT_FRACTIONS[nextCheckpointIndex]
+    ) {
+        saveCheckpoint();
+        nextCheckpointIndex++;
+    }
 
     for(let i = 0; i < snakePath.length; i++) {
         snakePath[i].y += gameSpeed * deltaTime;
@@ -1210,6 +1344,7 @@ function levelUpSequence() {
     soundManager.playSFX('successScreen'); 
     
     gameState = 'LEVEL_UP';
+    levelUpNotification.textContent = 'LEVEL UP!';
     levelUpNotification.classList.add('animate-level-text');
     
     adManager.showBanner();
@@ -1323,7 +1458,12 @@ newGameButton.addEventListener('click', () => {
     resetGame(true);
 });
 
-nextLevelButton.addEventListener('click', () => {
+nextLevelButton.addEventListener('click', async () => {
+    // A level transition is a natural pause; show an additional ad every
+    // third completed level without interrupting an active run.
+    if ((levelManager.currentLevel - 1) % 3 === 0) {
+        await adManager.showInterstitial();
+    }
     resetGame(false); 
     startGame();
 });
